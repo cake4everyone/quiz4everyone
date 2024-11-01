@@ -4,6 +4,7 @@ var quizOn: bool = false
 var voted: bool = false
 var countdown: float
 var round_data: Dictionary = {}
+var mediaDict: Dictionary = {}
 
 func _ready():
 	countdown = scene_manager.round_duration
@@ -21,10 +22,10 @@ func _process(delta: float):
 			check_vote()
 
 func check_vote():
-	if Input.is_key_pressed(KEY_A)||Input.is_key_pressed(KEY_1)||Input.is_key_pressed(KEY_KP_1): api.streamervote("1", on_streamervote_response)
-	elif Input.is_key_pressed(KEY_B)||Input.is_key_pressed(KEY_2)||Input.is_key_pressed(KEY_KP_2): api.streamervote("2", on_streamervote_response)
-	elif Input.is_key_pressed(KEY_C)||Input.is_key_pressed(KEY_3)||Input.is_key_pressed(KEY_KP_3): api.streamervote("3", on_streamervote_response)
-	elif Input.is_key_pressed(KEY_D)||Input.is_key_pressed(KEY_4)||Input.is_key_pressed(KEY_KP_4): api.streamervote("4", on_streamervote_response)
+	if Input.is_key_pressed(KEY_A) || Input.is_key_pressed(KEY_1) || Input.is_key_pressed(KEY_KP_1): api.streamervote("1", on_streamervote_response)
+	elif Input.is_key_pressed(KEY_B) || Input.is_key_pressed(KEY_2) || Input.is_key_pressed(KEY_KP_2): api.streamervote("2", on_streamervote_response)
+	elif Input.is_key_pressed(KEY_C) || Input.is_key_pressed(KEY_3) || Input.is_key_pressed(KEY_KP_3): api.streamervote("3", on_streamervote_response)
+	elif Input.is_key_pressed(KEY_D) || Input.is_key_pressed(KEY_4) || Input.is_key_pressed(KEY_KP_4): api.streamervote("4", on_streamervote_response)
 	else: return
 	voted = true
 	$Quiz/Answers/VoteIcon/Icon.self_modulate = Color.ORANGE
@@ -55,7 +56,7 @@ func start_next_round():
 	api.round_next(on_round_next_response)
 	quizOn = true
 
-func on_round_next_response(success: bool, data: Dictionary={}):
+func on_round_next_response(success: bool, data: Dictionary = {}):
 	if !success:
 		print("Faild to get next data!")
 		return
@@ -68,19 +69,59 @@ func show_round_data(data: Dictionary):
 	$RoundCounter.text = "Runde %d/%d (%s)" % [data.current_round, data.max_round, data.category.title]
 	$RoundCounter.show()
 
-	$Quiz/Question/Label.text = data.question
-	$Quiz/Answers/A/Label.text = data.answers[0]
-	$Quiz/Answers/B/Label.text = data.answers[1]
+	if data.question.type == 0:
+		$Quiz/Question/Image.hide()
+		$Quiz/Question/Label.text = data.question.text
+		$Quiz/Question/Label.show()
+	elif data.question.type == 1:
+		$Quiz/Question/Label.hide()
+		$Quiz/Question/Image.hide()
+		mediaDict[data.question.text] = $Quiz/Question/Image
+
+	if data.answers[0].type == 0:
+		$Quiz/Answers/A/Image.hide()
+		$Quiz/Answers/A/Label.text = data.answers[0].text
+		$Quiz/Answers/A/Label.show()
+	elif data.answers[0].type == 1:
+		$Quiz/Answers/A/Label.hide()
+		$Quiz/Answers/A/Image.hide()
+		mediaDict[data.answers[0].text] = $Quiz/Question/A/Image
+	if data.answers[1].type == 0:
+		$Quiz/Answers/B/Image.hide()
+		$Quiz/Answers/B/Label.text = data.answers[1].text
+		$Quiz/Answers/B/Label.show()
+	elif data.answers[1].type == 1:
+		$Quiz/Answers/B/Label.hide()
+		$Quiz/Answers/B/Image.hide()
+		mediaDict[data.answers[1].text] = $Quiz/Answers/B/Image
+
 	if len(data.answers) >= 3:
-		$Quiz/Answers/C/Label.text = data.answers[2]
+		if data.answers[2].type == 0:
+			$Quiz/Answers/C/Image.hide()
+			$Quiz/Answers/C/Label.text = data.answers[2].text
+			$Quiz/Answers/C/Label.show()
+		elif data.answers[2].type == 1:
+			$Quiz/Answers/C/Label.hide()
+			$Quiz/Answers/C/Image.hide()
+			mediaDict[data.answers[2].text] = $Quiz/Answers/C/Image
 		$Quiz/Answers/C.show()
 	else:
 		$Quiz/Answers/C.hide()
 	if len(data.answers) >= 4:
-		$Quiz/Answers/D/Label.text = data.answers[3]
+		if data.answers[3].type == 0:
+			$Quiz/Answers/D/Image.hide()
+			$Quiz/Answers/D/Label.text = data.answers[3].text
+			$Quiz/Answers/D/Label.show()
+		elif data.answers[3].type == 1:
+			$Quiz/Answers/D/Label.hide()
+			$Quiz/Answers/D/Image.hide()
+			mediaDict[data.answers[3].text] = $Quiz/Answers/D/Image
 		$Quiz/Answers/D.show()
 	else:
 		$Quiz/Answers/D.hide()
+	
+	if len(mediaDict) > 0:
+		api.round_media(data.question.text, on_round_media_response)
 
 	$Quiz/Answers/VoteIcon/Icon.self_modulate = Color.WHITE
 	$Quiz/Answers/VoteIcon.show()
@@ -112,3 +153,20 @@ func on_server_api_got_ws_message(msg: Dictionary):
 			on_round_end(msg)
 		_:
 			print("Got unkown ws message type: '%s': %s" % [msg.type, msg])
+
+func on_round_media_response(success: bool, media: String, data: PackedByteArray):
+	if success:
+		print("media ", media)
+		var img: Image = Image.new()
+		img.load_png_from_buffer(data)
+		mediaDict[media].texture = ImageTexture.create_from_image(img)
+		mediaDict[media].show()
+	else:
+		print("Faild to get media %s data: %s" % [media, data.get_string_from_ascii()])
+
+	mediaDict.erase(media)
+	if len(mediaDict) == 0:
+		return
+
+	var next_media = mediaDict.keys()[0]
+	api.round_media(next_media, on_round_media_response)
